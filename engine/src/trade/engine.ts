@@ -30,7 +30,7 @@ export class Engine{
                 }
                 break;
             case "On_Ramp":
-                const updatedBalance = this.onRamp(message.data.amount, message.data.userId);
+                const updatedBalance = this.onRamp(message.data.amount, message.data.userId, message.data.market);
                 RedisManager.getInstance().sendToApi(clientId, {
                     type: "BALANCE_UPDATED",
                     payload: {
@@ -46,21 +46,50 @@ export class Engine{
                         currentBalance: currentBalance
                     }
                 })
-        }
+                break;
+            case "Get_Open_Orders":
+                const market = message.data.market;
+                console.log(this.orderbook[market]);
+                RedisManager.getInstance().sendToApi(clientId, {
+                    type: "OPEN_ORDERS",
+                    payload: {
+                        openOrders: this.orderbook[market]
+                    }
+                })
+                break;
+            case "Get_Stock_Balance":
+                const stockbalance = this.stockBalances.get(message.data.userId);
+                if(stockbalance){
+                    RedisManager.getInstance().sendToApi(clientId, {
+                        type: "STOCK_BALANCE",
+                        payload: {
+                            stockbalance: stockbalance
+                        }
+                    })   
+                    break;
+                }else{
+                    console.log("stock balance is Null");
+                    RedisManager.getInstance().sendToApi(clientId, {
+                        type: "STOCK_BALANCE",
+                        payload: {
+                            stockbalance: {}
+                        }
+                    })   
+                    break;
+                }
+        }   
     }
 
     getINRBal(userId: string){
         const currentBalance = this.inrBalances.get(userId)?.available;
-        if(currentBalance){
+        if(currentBalance) {
             return currentBalance;
         }
-
         return 0;  
     }
 
     createOrder(symbol: string, userId: string, type: Ordertype, side: side, quantity: number, price: number ){
         const priceInPaise = price * 100;
-        
         try{
             this.checkAndLockBalances(userId, symbol, type, side, priceInPaise, quantity);
         }catch(error){
@@ -70,29 +99,29 @@ export class Engine{
         if(side === 'buy'){
             const market = this.orderbook[symbol];
             let matchedQty = 0;
+            let remainingQty = quantity;
             if(market){
                 const priceLevel = type === 'yes' ? market.yes.get(priceInPaise) : market.no.get(priceInPaise);
                 if(priceLevel){
+                    console.log("QAuntity available: ", this.orderbook[symbol][type].get(priceInPaise)?.total);
                     const availableQty = priceLevel.total;
                     matchedQty = Math.min(availableQty, quantity);
                     this.executeOrder(userId, symbol, type, priceLevel, priceInPaise, matchedQty);
-                    const remainingQty = quantity - availableQty;
+                    remainingQty -= matchedQty;
+                    if(!priceLevel.total) market[type].delete(priceInPaise);
                     if(remainingQty){
                         this.createCounterOrder(userId, symbol, type, priceInPaise, remainingQty);
                     }
-                    // return matchedQty;
-                }else{
+                    console.log("OB afer purchase: ", this.orderbook);
+                    return matchedQty;
+                }//from here we create orderbook level by level and generate counter offers
+                else{
                     this.createCounterOrder(userId, symbol, type, priceInPaise, quantity);
                 }
             }else{
                 this.createCounterOrder(userId, symbol, type, priceInPaise, quantity);
             }
         }else{
-            const userStocks = this.stockBalances.get(userId);
-            if(userStocks){
-                userStocks[symbol][type].available -= quantity;
-                userStocks[symbol][type].locked += quantity;
-            }
             const listingType = 'original';
             this.addOrder(userId, symbol, type, priceInPaise, quantity, listingType);
         }
@@ -104,82 +133,83 @@ export class Engine{
         priceLevel.total -= matchedQty;
         let remainingQty = matchedQty;
         for(const [sellerId, userRecord] of Object.entries(priceLevel.orders) ){
+            const tempMatchQuantity = Math.min(userRecord.quantity, remainingQty);
+            //releasing/debiting buyer cash bal
             const buyerINRBal = this.inrBalances.get(buyerId)
-
             if(buyerINRBal){
-                //releasing/debiting buyer cash bal
                 buyerINRBal.locked -= userRecord.quantity * priceInPaise;
             }
-
-            const buyerStockBal = this.stockBalances.get(buyerId)?.[symbol][type];
-            if(buyerStockBal){
-                //crediting buyer stock bal
-                buyerStockBal.available += matchedQty;
-            }
             //debiting seller stock bal
-            userRecord.quantity -= matchedQty;
             if(userRecord.listingType == 'original') { 
+                userRecord.quantity -= tempMatchQuantity;//deleting order
+                const sellerStockBal = this.stockBalances.get(sellerId);
+                if(sellerStockBal){//releasing stock balance
+                    sellerStockBal[symbol][type].locked -= tempMatchQuantity;
+                }
                 const sellINRBal = this.inrBalances.get(sellerId);
                 if(sellINRBal){
                     //crediting seller cash bal
-                    sellINRBal.available += userRecord.quantity * priceInPaise;
+                    sellINRBal.available += tempMatchQuantity * priceInPaise;
                 }  
             }else{
                 const counterType = type === 'yes' ? 'no' : 'yes';
                 //fullfill the original request which was respnsible for the counter order
-                const originalOrder = this.stockBalances.get(sellerId)?.[symbol][counterType];
-                const currentMatches = Math.min(userRecord.quantity, matchedQty);
-                if(originalOrder){
-                    originalOrder.available += currentMatches
-                }
+                this.creditStocks(sellerId, symbol, tempMatchQuantity, counterType);
                 const counterCreator = this.inrBalances.get(sellerId);
                 if(counterCreator){
-                    counterCreator.locked -= priceInPaise * currentMatches
+                    counterCreator.locked -= priceInPaise * tempMatchQuantity;
                 }
             }
-            
+            //crediting buyer stock bal 
+            this.creditStocks(buyerId, symbol, tempMatchQuantity, type);
             //checking whether we should proceed to the next userRecored in the orderbook or not
-            if(userRecord.quantity > remainingQty){
-                break;
-            }
-            remainingQty -= userRecord.quantity;       
+            remainingQty -= tempMatchQuantity;
+            if(remainingQty) break;  
+            console.log("buyer: ",buyerId);
+            console.log(this.stockBalances.get(buyerId));
+            console.log("seller: ", sellerId);
+            console.log(this.stockBalances.get(sellerId));
         }
+
     }
 
     addOrder(userId: string, symbol: string, type: Ordertype, price: number, quantity: number, listingType: 'original' | 'reverted'  ){
-        if(!this.orderbook[symbol]){
+        if(!this.orderbook[symbol]){//incase of first order for the market 
             this.orderbook[symbol] = { yes: new Map<number, Order>(), no: new Map<number, Order>() }
         }
-        const priceLevel = this.orderbook[symbol][type].get(price);
-        if(!priceLevel){
-            this.orderbook[symbol][type].set(price, {
-                total: quantity,
+        let priceLevel = this.orderbook[symbol][type].get(price);
+        if(!priceLevel){//incase no order exists for the respective price
+            const order: Order = {
+                total: 0,
                 orders : { 
-                    userId : { 
-                        quantity: quantity,
+                    [userId] : { 
+                        quantity: 0,
                         listingType: listingType
                     }
                 }
-            })
-        }
-        else{
-            priceLevel.total += quantity;
-            const userRecord = priceLevel.orders[userId];
-            if(!userRecord) {
-                priceLevel.orders[userId].quantity = quantity;
-
-            }else{
-                userRecord.quantity += quantity;
             }
+            this.orderbook[symbol][type].set(price, order);
+            priceLevel = order;
+        }
+        priceLevel.total += quantity;  
+        if(!priceLevel.orders[userId]) {
+            priceLevel.orders[userId] = {
+                quantity: quantity,
+                listingType: listingType
+            }
+        }else {
+            priceLevel.orders[userId].quantity += quantity;
             priceLevel.orders[userId].listingType = listingType;
-        }        
-        console.log(this.orderbook);
+        }
+        console.log("Orderboook after creating order", this.orderbook);
     }
 
     createCounterOrder(userId: string, symbol: string, type: Ordertype, price: number, quantity: number){
         const counterType = type === 'yes' ? 'no' : 'yes';
         const counterPrice = 1000 - price;
         const listingType = 'reverted';
+
+        // console.log(counterPrice, counterType, listingType);
 
         this.addOrder(userId, symbol, counterType, counterPrice, quantity, listingType);
         
@@ -189,17 +219,20 @@ export class Engine{
         const totalPrice = priceInPaise * reqQuantity;
         if(side === 'buy'){
             const inrBalance = this.inrBalances.get(userId);
+            //incase inrBalance is null or it is less than required amount
             if(!inrBalance || (inrBalance && (inrBalance.available < totalPrice))){
                 throw new Error("Insufficient funds")
             }
-        
+            
+            //required funds r locked
             if(inrBalance){
                 inrBalance.available -= totalPrice;
                 inrBalance.locked += totalPrice;
             }
         }else{
             const stockBalance = this.stockBalances.get(userId)?.[symbol][type] ;
-            if(stockBalance && (stockBalance.available < reqQuantity)) {
+            //locking of stocks is done in similar fashion when sell order comes
+            if(!stockBalance || (stockBalance.available < reqQuantity)) {
                 throw new Error("Insufficient stock balance");
             }
             if(stockBalance){
@@ -210,7 +243,7 @@ export class Engine{
         return;
     }
 
-    onRamp(amount: number, userId: string) {
+    onRamp(amount: number, userId: string, symbol: string) {
         const amountInPaise = amount * 100;
         let userBalance = this.inrBalances.get(userId);
         if(!userBalance) {
@@ -223,7 +256,54 @@ export class Engine{
         else {
             userBalance.available += amountInPaise;
         }
-        return userBalance?.available;
-        
+        return userBalance?.available;   
+    }
+
+    creditStocks(buyerId: string, symbol: string, matchedQuantity: number, type: Ordertype){
+        if(!this.stockBalances.get(buyerId)){
+            const tempStockBalance: STOCK_BALANCES = type === 'yes' ? {
+                [symbol]: {
+                    yes: {
+                        available: matchedQuantity,
+                        locked: 0 
+                    },
+                    no: {
+                        available: 0,
+                        locked: 0
+                    }
+                }
+            } : {
+                [symbol]: {
+                    yes: {
+                        available: 0,
+                        locked: 0 
+                    },
+                    no: {
+                        available: matchedQuantity,
+                        locked: 0
+                    }
+                }
+            }
+            this.stockBalances.set(buyerId, tempStockBalance);
+            return;
+        }
+        const userStockBalance = this.stockBalances.get(buyerId);
+        if(!userStockBalance)return;
+
+        if(!userStockBalance[symbol]) {
+            userStockBalance[symbol] = {
+                yes: {
+                    available: 0,
+                    locked: 0
+                },
+                no: {
+                    available: 0,
+                    locked: 0
+                }
+            }
+        }
+        userStockBalance[symbol][type].available += matchedQuantity;
+        //console.log(this.stockBalances);
     }
 }
+///let userMarketStocks = ;

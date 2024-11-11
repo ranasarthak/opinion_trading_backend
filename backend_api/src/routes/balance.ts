@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { RedisManager } from "../RedisManager";
-import { GET_INR_BALANCE, ON_RAMP } from "../types/variables";
+import { GET_INR_BALANCE, GET_STOCK_BALANCE, ON_RAMP } from "../types/variables";
 
 export const balanceRouter = Router();
 
@@ -17,25 +17,29 @@ balanceRouter.get('/inr', async(req, res) => {
 })
 
 balanceRouter.post('/onramp', async(req, res) => {
-    const { userId, amount } = req.body;
+    const { userId, amount, market } = req.body;
     try{
         const response = await RedisManager.getInstance().sendAndAwait({
             type: ON_RAMP,
             data: {
                 userId,
+                market,
                 amount
             }
         });
-        console.log(response);
-        res.json('empty');
+        res.json(response.payload);
     }catch(e){
         console.log(e);
     }
 })
 
-// balanceRouter.get('/stocks', async(req, res) => {
-//     const { userId } = req.body;
-//     const response = await RedisManager.getInstance().sendAndAwait({
-//         type
-//     })
-// })
+balanceRouter.get('/stocks', async(req, res) => {
+    const { userId } = req.body;
+    const response = await RedisManager.getInstance().sendAndAwait({
+        type: GET_STOCK_BALANCE,
+        data: {
+            userId
+        }
+    });
+    res.json(response);
+})

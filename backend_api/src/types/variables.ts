@@ -3,13 +3,31 @@ export const CANCEL_ORDER = "Cancel_Order";
 export const ON_RAMP = "On_Ramp";
 export const GET_OPEN_ORDERS = "Get_Open_Orders";
 export const GET_INR_BALANCE = "Get_Inr_Balance";
+export const OPEN_ORDERS = "Open_Orders";
+export const GET_STOCK_BALANCE = "Get_Stock_Balance";
 
-export interface DepthMessage {
-    type: "DEPTH",
+
+export interface IndividualOrders {
+    quantity: number;
+    listingType: 'original' | 'reverted';
+}
+
+export interface Order {
+    total: number;
+    orders: { [userId: string]: IndividualOrders };
+}
+
+export interface OrderBook {
+    [symbol: string] : {
+        'yes': Map<number, Order>;
+        'no': Map<number, Order>;
+    };
+}
+
+export interface OPEN_ORDERS {
+    type: "Open_Orders",
     payload: {
-        market: string,
-        yes: [string, string][];
-        no: [string, string][];
+        orderbook: OrderBook
     }
 }
 
@@ -36,14 +54,7 @@ export type BalanceUpdated = {
     
 }
 
-export type CurrentBalance = {
-    type: "CURRENT_BALANCE",
-    payload: {
-        currentBalance: number
-    }
-}
-
-export type MessageFromOrderbook = DepthMessage | OrderPlaced | BalanceUpdated;
+export type MessageFromOrderbook = OPEN_ORDERS | OrderPlaced | BalanceUpdated;
 
 
 export type MessageToEngine = {
@@ -76,6 +87,12 @@ export type MessageToEngine = {
     type: typeof ON_RAMP,
     data: {
         userId: string,
+        market: string,
         amount: number
+    }
+} | {
+    type: typeof GET_STOCK_BALANCE,
+    data: {
+        userId: string
     }
 }

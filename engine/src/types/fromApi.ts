@@ -3,6 +3,8 @@ export const CANCEL_ORDER = "Cancel_Order";
 export const ON_RAMP = "On_Ramp";
 export const GET_OPEN_ORDERS = "Get_Open_Orders";
 export const GET_INR_BALANCE = "Get_Inr_Balance";
+export const GET_STOCK_BALANCE = "Get_Stock_Balance";
+
 
 export type MessageFromApi = {
     type: typeof CREATE_ORDER,
@@ -34,6 +36,12 @@ export type MessageFromApi = {
     type: typeof ON_RAMP,
     data: {
         userId: string,
+        market: string,
         amount: number
+    }
+} | {
+    type: typeof GET_STOCK_BALANCE,
+    data: {
+        userId: string
     }
 }

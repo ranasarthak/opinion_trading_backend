@@ -6,7 +6,6 @@ export const orderRouter = Router();
 
 orderRouter.post('/', async(req, res) => {
     const { market , price, stockType, quantity, side, userId } = req.body;
-    console.log({ market, price, quantity, side, userId});
 
     const reponse = await RedisManager.getInstance().sendAndAwait({
         type: CREATE_ORDER,
@@ -38,11 +37,13 @@ orderRouter.delete('/', async(req, res) => {
 
 
 orderRouter.get('/', async(req, res) => {
+    const { market } = req.body;
     const response = await RedisManager.getInstance().sendAndAwait({
         type: GET_OPEN_ORDERS,
         data: {
-            market: req.query.market as string
+            market
         }
     });
+    console.log(response);
     res.json(response.payload);
 })

@@ -1,19 +1,15 @@
-import { Order } from "../trade/Orderbook"
+import { Order, OrderBook, STOCK_BALANCES } from "../trade/Orderbook"
 
 export type MessageToApi = {
-    type: "DEPTH",
-    payload: {
-        yes: [string, string][],
-        no: [string, string][]
-    }
-} | {
     type: "BALANCE_UPDATED",
     payload: {
         updatedBalance: number
     }
 } | {
     type: "OPEN_ORDERS",
-    payload: Order[];
+    payload: {
+        openOrders: OrderBook[string]
+    };
 } | {
     type: "ORDER_PLACED",
     payload: {
@@ -29,5 +25,10 @@ export type MessageToApi = {
     payload: {
         currentBalance: number
     }
-};
+} | {
+    type: "STOCK_BALANCE",
+    payload: {
+        stockbalance: STOCK_BALANCES
+    }
+}
 

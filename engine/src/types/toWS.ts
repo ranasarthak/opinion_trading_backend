@@ -1,8 +1,7 @@
+import { OrderBook } from "../trade/Orderbook"
 
 export type MessageToWs = {
-    type: "BROADCAST",
-    payload: {
-        
-    }
-
+   payload: {
+    market: OrderBook[string]
+   }
 }

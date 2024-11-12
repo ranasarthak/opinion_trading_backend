@@ -18,6 +18,7 @@ export class User {
     }
 
     private addListneres() {
+        console.log("addListneres");
         this.ws.on("message",(message: string) => {
             const parsedMessage: IncommingMessage = JSON.parse(message);
             if(parsedMessage.method === SUBSCRIBE){

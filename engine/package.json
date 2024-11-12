@@ -1,9 +1,10 @@
+
 {
   "name": "engine",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "tsc -b && node dist/index.js"
+    "dev": "npx nodemon src/index.ts"
   },
   "author": "",
   "license": "ISC",

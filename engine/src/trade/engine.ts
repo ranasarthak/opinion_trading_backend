@@ -112,7 +112,7 @@ export class Engine{
                     if(remainingQty){
                         this.createCounterOrder(userId, symbol, type, priceInPaise, remainingQty);
                     }
-                    console.log("OB afer purchase: ", this.orderbook);
+                    this.publishToWs(symbol);
                     return matchedQty;
                 }//from here we create orderbook level by level and generate counter offers
                 else{
@@ -125,7 +125,16 @@ export class Engine{
             const listingType = 'original';
             this.addOrder(userId, symbol, type, priceInPaise, quantity, listingType);
         }
+        this.publishToWs(symbol);
         return quantity;
+    }
+
+    publishToWs(symbol: string) {
+        RedisManager.getInstance().publishMessage(symbol, {
+            payload: {
+                market: this.orderbook[symbol]
+            }
+        })
     }
 
 

@@ -87,7 +87,6 @@ export type MessageToEngine = {
     type: typeof ON_RAMP,
     data: {
         userId: string,
-        market: string,
         amount: number
     }
 } | {

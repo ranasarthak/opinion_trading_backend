@@ -36,7 +36,6 @@ export type MessageFromApi = {
     type: typeof ON_RAMP,
     data: {
         userId: string,
-        market: string,
         amount: number
     }
 } | {

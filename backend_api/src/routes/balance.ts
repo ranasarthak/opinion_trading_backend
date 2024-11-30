@@ -23,7 +23,6 @@ balanceRouter.post('/onramp', async(req, res) => {
             type: ON_RAMP,
             data: {
                 userId,
-                market,
                 amount
             }
         });

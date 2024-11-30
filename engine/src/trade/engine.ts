@@ -30,7 +30,7 @@ export class Engine{
                 }
                 break;
             case "On_Ramp":
-                const updatedBalance = this.onRamp(message.data.amount, message.data.userId, message.data.market);
+                const updatedBalance = this.onRamp(message.data.amount, message.data.userId);
                 RedisManager.getInstance().sendToApi(clientId, {
                     type: "BALANCE_UPDATED",
                     payload: {
@@ -103,7 +103,6 @@ export class Engine{
             if(market){
                 const priceLevel = type === 'yes' ? market.yes.get(priceInPaise) : market.no.get(priceInPaise);
                 if(priceLevel){
-                    console.log("QAuntity available: ", this.orderbook[symbol][type].get(priceInPaise)?.total);
                     const availableQty = priceLevel.total;
                     matchedQty = Math.min(availableQty, quantity);
                     this.executeOrder(userId, symbol, type, priceLevel, priceInPaise, matchedQty);
@@ -252,7 +251,7 @@ export class Engine{
         return;
     }
 
-    onRamp(amount: number, userId: string, symbol: string) {
+    onRamp(amount: number, userId: string) {
         const amountInPaise = amount * 100;
         let userBalance = this.inrBalances.get(userId);
         if(!userBalance) {
@@ -312,7 +311,5 @@ export class Engine{
             }
         }
         userStockBalance[symbol][type].available += matchedQuantity;
-        //console.log(this.stockBalances);
     }
 }
-///let userMarketStocks = ;
